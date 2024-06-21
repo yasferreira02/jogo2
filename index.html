@@ -1,0 +1,281 @@
+<!--
+Nome:Guilherme Diasc Numero:10 Serie:2b
+Nome:Joao Gabriel    Numero:15 Serie:2b
+Nome:Leonardo.       Numero:   Serie:2b
+Nome:Yasmin Ferreira Numero:30 Serie:2b
+        -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<title>Jogo de Aeronave com Canvas</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+    canvas {
+        border: 1px solid #d3d3d3;
+        background-color: #f1f1f1;
+    }
+</style>
+<script>
+var myGamePiece;
+var enemyPieces = [];
+var bullets = [];
+var keys = {}; 
+var lastMyShootTime = 0;
+var lastEnemyShootTime = 0;
+var backgroundImage;
+var score = 0;
+var lives = 3;
+var enemySize = 80;
+var enemySpeed = 2;
+var killCount = 0;
+var gameOver = false;
+
+var lastHitTime = 0;
+var damageAreaWidth = 50;
+
+function startGame() {
+    myGamePiece = new component(80, 80, "red", 10, 120, "amigo.png", false, damageAreaWidth);
+    myGameArea.start();
+    createEnemies();
+    backgroundImage = new component(480, 270, "", 0, 0, "game.png", false);
+    
+    window.addEventListener('keydown', function(e) {
+        keys[e.keyCode] = true;
+    });
+    window.addEventListener('keyup', function(e) {
+        keys[e.keyCode] = false;
+    });
+}
+
+function createEnemies() {
+    var enemy1 = new component(enemySize, enemySize, "blue", 200, 10, "inimigo.png", true);
+    enemy1.speedX = enemySpeed;
+    enemyPieces.push(enemy1);
+    
+    var enemy2 = new component(enemySize, enemySize, "green", 350, 10, "inimigo.png", true);
+    enemy2.speedX = -enemySpeed;
+    enemyPieces.push(enemy2);
+}
+
+var myGameArea = {
+    canvas : document.createElement("canvas"),
+    start : function() {
+        this.canvas.width = 480;
+        this.canvas.height = 270;
+        this.context = this.canvas.getContext("2d");
+        document.body.insertBefore(this.canvas, document.body.childNodes[0]);
+        this.interval = setInterval(updateGameArea, 20);
+    },
+    clear : function() {
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    }
+}
+
+function component(width, height, color, x, y, imageSrc, isEnemy, damageAreaWidth) {
+    this.width = width;
+    this.height = height;
+    this.x = x;
+    this.y = y;
+    this.image = new Image();
+    this.image.src = imageSrc;
+    this.isEnemy = isEnemy;
+    this.damageAreaWidth = damageAreaWidth;
+    
+    this.update = function(){
+        ctx = myGameArea.context;
+        if (!this.isEnemy) {
+            ctx.drawImage(this.image, this.x, this.y, this.width, this.height);
+        } else {
+            ctx.save();
+            ctx.translate(this.x + this.width / 2, this.y + this.height / 2);
+            ctx.rotate(Math.PI);
+            ctx.drawImage(this.image, -this.width / 2, -this.height / 2, this.width, this.height);
+            ctx.restore();
+        }
+    }
+   
+    this.move = function(direction) {
+        if (direction === "left" && this.x > 0) {
+            this.x -= 5; 
+        } else if (direction === "right" && this.x < myGameArea.canvas.width - this.width) {
+            this.x += 5; 
+        }
+    }
+    
+    this.shoot = function() {
+        var now = Date.now();
+        var shootDelay = this.isEnemy ? 1500 : 900; 
+        var shootSound = this.isEnemy ? 'tiro.mp3' : 'tiro.mp3'; 
+        
+        if (now - (this.isEnemy ? lastEnemyShootTime : lastMyShootTime) > shootDelay) {
+            var bulletColor = this.isEnemy ? "red" : "blue"; 
+            var bulletSpeed = this.isEnemy ? 3 : -3; 
+            
+            var startX = this.x + this.width / 2;
+            var startY = this.y + this.height;
+            
+            bullets.push(new bullet(5, 5, bulletColor, startX, startY, bulletSpeed, this.isEnemy));
+            
+            if (this.isEnemy) {
+                lastEnemyShootTime = now;
+            } else {
+                lastMyShootTime = now;
+                var myShootSound = new Audio(shootSound);
+                myShootSound.play();
+            }
+        }
+    }
+    
+    this.checkBoundaries = function() {
+        if (this.x <= 0 || this.x >= myGameArea.canvas.width - this.width) {
+            this.speedX *= -1;
+        }
+    }
+    
+    this.isHit = function(bullet) {
+        if (!this.isEnemy && bullet.x >= this.x && bullet.x <= this.x + this.width &&
+            bullet.y >= this.y && bullet.y <= this.y + this.damageAreaWidth) {
+            return true;
+        }
+        else if (this.isEnemy && bullet.x >= this.x && bullet.x <= this.x + this.width &&
+                 bullet.y >= this.y && bullet.y <= this.y + this.height) {
+            return true;
+        }
+        return false;
+    }
+    
+    this.takeDamage = function() {
+        if (!this.isEnemy) {
+            this.image.src = "explosao.png";
+            setTimeout(() => {
+                this.image.src = "";
+            }, 300);
+            lives--;
+            if (lives <= 0) {
+                endGame();
+            }
+        } else {
+            this.image.src = "explosao.png";
+            setTimeout(() => {
+                this.image.src = "inimigo.png";
+            }, 300);
+            setTimeout(() => {
+                var explosion = new component(60, 60, "", this.x + this.width / 2 - 30, this.y + this.height / 2 - 30, "explosao.png", false);
+                setTimeout(() => {
+                    explosion.image.src = "";
+                }, 300);
+            }, 0);
+        }
+    }
+}
+
+function bullet(width, height, color, x, y, speedY, isEnemyBullet) {
+    this.width = width;
+    this.height = height;
+    this.x = x;
+    this.y = y;
+    this.speedY = speedY;
+    this.isEnemyBullet = isEnemyBullet;
+    
+    this.update = function(){
+        ctx = myGameArea.context;
+        ctx.fillStyle = color;
+        ctx.fillRect(this.x, this.y += this.speedY, this.width, this.height);
+        
+        if (this.y < 0 || this.y > myGameArea.canvas.height) {
+            bullets.splice(bullets.indexOf(this), 1);
+        }
+    }
+}
+
+function updateGameArea() {
+    if (gameOver) return;
+    
+    myGameArea.clear();
+    
+    backgroundImage.update();
+    
+    if (keys[65]) {
+        myGamePiece.move("left");
+    }
+    
+    if (keys[68]) {
+        myGamePiece.move("right");
+    }
+    
+    if (keys[32]) { 
+        myGamePiece.shoot();
+    }
+    
+    for (var i = 0; i < bullets.length; i++) {
+        bullets[i].update();
+        
+        for (var j = 0; j < enemyPieces.length; j++) {
+            if (enemyPieces[j].isHit(bullets[i])) {
+                bullets.splice(i, 1);
+                enemyPieces[j].takeDamage();
+                if (!enemyPieces[j].isEnemy) {
+                    endGame();
+                    return;
+                }
+                enemyPieces.splice(j, 1);
+                score++;
+                killCount++;
+                
+                if (killCount === 5 || killCount === 15) {
+                    adjustEnemies();
+                }
+                
+                if (killCount === 15) {
+                    endGame();
+                    return;
+                }
+            }
+        }
+    }
+    
+    if (enemyPieces.length === 0) {
+        createEnemies();
+    }
+    
+    for (var i = 0; i < enemyPieces.length; i++) {
+        enemyPieces[i].x += enemyPieces[i].speedX;
+        enemyPieces[i].checkBoundaries();
+        enemyPieces[i].shoot();
+        enemyPieces[i].update();
+    }
+
+    myGamePiece.update();
+    
+    ctx = myGameArea.context;
+    ctx.font = "16px Arial";
+    ctx.fillStyle = "black";
+    ctx.fillText("Pontuação: " + score, 10, 20);
+    ctx.fillText("Vidas: " + lives, 10, 40);
+    ctx.fillText("Kills: " + killCount, 10, 60);
+}
+
+function adjustEnemies() {
+    enemySize = killCount === 5 ? 50 : 30;
+    enemySpeed = killCount === 5 ? 3 : 5;
+    
+    for (var k = 0; k < enemyPieces.length; k++) {
+        enemyPieces[k].width = enemySize;
+        enemyPieces[k].height = enemySize;
+        enemyPieces[k].speedX = enemySpeed * (enemyPieces[k].speedX > 0 ? 1 : -1);
+    }
+}
+
+function endGame() {
+    gameOver = true;
+    clearInterval(myGameArea.interval);
+    alert("Fim de jogo! Sua pontuação foi: " + score);
+}
+
+</script>
+</head>
+<body onload="startGame();">
+</body>
+</html>
+```
